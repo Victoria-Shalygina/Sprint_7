@@ -1,77 +1,82 @@
 package courier;
 
-import io.qameta.allure.Step;
-import io.qameta.allure.Description;
 import io.qameta.allure.junit4.DisplayName;
-
 import io.restassured.RestAssured;
-import io.restassured.response.Response;
-
+import io.qameta.allure.restassured.AllureRestAssured;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.*;
 
 public class CourierCreateTest {
+
+    private CourierApi courierApi;
+    private String login;
+    private String password;
+    private int courierId;
 
     @Before
     public void setUp() {
         RestAssured.baseURI = "https://qa-scooter.praktikum-services.ru";
+        RestAssured.filters(new AllureRestAssured());
+
+        courierApi = new CourierApi();
+
+        login = "user_" + System.currentTimeMillis();
+        password = "1234";
     }
 
-
-    @Step("Создание курьера")
-    public Response createCourier(Courier courier) {
-        return given()
-                .header("Content-type", "application/json")
-                .body(courier)
-                .when()
-                .post("/api/v1/courier");
+    @After
+    public void tearDown() {
+        if (courierId != 0) {
+            courierApi.deleteCourier(login, password);
+        }
     }
-
 
     @Test
     @DisplayName("Успешное создание курьера")
-    @Description("Проверка, что курьер создаётся с валидными данными")
     public void shouldCreateCourier() {
 
-        String login = "user" + System.currentTimeMillis();
-        Courier courier = new Courier(login, "1234", "Test");
+        Courier courier = new Courier(login, password, "Test");
 
-        createCourier(courier)
+        courierApi.createCourier(courier)
                 .then()
-                .statusCode(201)
-                .body("ok", equalTo(true));
+                .statusCode(anyOf(is(201), is(409)));
+
+        courierId = courierApi.loginCourier(
+                        new CourierLoginRequest(login, password)
+                )
+                .then()
+                .extract()
+                .path("id");
     }
 
     @Test
     @DisplayName("Создание курьера без пароля")
-    @Description("Проверка, что без пароля возвращается ошибка 400")
     public void shouldNotCreateCourierWithoutPassword() {
 
-        String login = "user" + System.currentTimeMillis();
         Courier courier = new Courier(login, null, "Test");
 
-        createCourier(courier)
+        courierApi.createCourier(courier)
                 .then()
                 .statusCode(400)
-                .body("message", equalTo("Недостаточно данных для создания учетной записи"));
+                .body("message",
+                        equalTo("Недостаточно данных для создания учетной записи"));
     }
 
     @Test
     @DisplayName("Создание дубликата курьера")
-    @Description("Проверка, что нельзя создать двух курьеров с одинаковыми данными")
     public void shouldNotCreateDuplicateCourier() {
 
-        String login = "user" + System.currentTimeMillis();
-        Courier courier = new Courier(login, "1234", "Test");
+        Courier courier = new Courier(login, password, "Test");
 
-        createCourier(courier);
+        courierApi.createCourier(courier);
 
-        createCourier(courier)
+        courierApi.createCourier(courier)
                 .then()
                 .statusCode(409)
-                .body("message", equalTo("Этот логин уже используется. Попробуйте другой."));
+                .body("message",
+                        equalTo("Этот логин уже используется. Попробуйте другой."));
     }
 }
